@@ -1,6 +1,6 @@
 {{define "base"}}
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 
 <head>
     <meta charset="UTF-8">
@@ -13,31 +13,32 @@
 </head>
 
 <body>
-    <div class="app-layout">
-        <header class="navbar">
-            <div class="nav-container">
-                <a href="/" class="brand-logo">
-                    <span class="brand-icon">⚡</span>
-                    <span class="brand-name">Go Blue Bird</span>
+
+    <header>
+        <nav>
+            <h1 class="text-gradient text-xl">
+                <a href="/">
+                    Go Blue Bird
                 </a>
-                <nav class="nav-links">
-                    <a href="/" class="nav-item">Home</a>
-                    <a href="/about" class="nav-item">About</a>
-                    <a href="/api/v1/health" target="_blank" class="nav-item badge">API Health</a>
-                </nav>
+            </h1>
+            <div class="flex gap-4">
+                <a href="/">Home</a>
+                <a href="/about">About</a>
+                <a href="/api/health" target="_blank" class="badge">API Health</a>
+                <a href="/api/info" target="_blank" class="badge">API Info</a>
+                <button class="outline" data-toggle="theme"> 🌞/🌙 </button>
             </div>
-        </header>
+        </nav>
+    </header>
 
-        <main class="main-content">
-            {{template "content" .}}
-        </main>
+    <main>
+        {{template "content" .}}
+    </main>
 
-        <footer class="footer">
-            <div class="footer-container">
-                <p>&copy; 2026 Go Blue Bird Starter Kit. Built with Go & Gin Framework.</p>
-            </div>
-        </footer>
-    </div>
+    <footer>
+        <p>&copy; 2026 Go Blue Bird Starter Kit. Built with Go & Gin Framework.</p>
+    </footer>
+
     <script src="/public/js/bluebird.js"></script>
 </body>
 

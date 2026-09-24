@@ -6,7 +6,9 @@ import (
 	"io/fs"
 	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/seip25/Go-Blue-bird/config"
@@ -34,18 +36,24 @@ func main() {
 			log.Fatal("Error: DB sub-command required (tables, columns <table>, query <table>)")
 		}
 		handleDBCommand(os.Args[2:])
+	case "build":
+		handleBuildCommand(os.Args[2:])
+	case "service":
+		handleServiceCommand(os.Args[2:])
 	default:
 		printUsage()
 	}
 }
 
 func printUsage() {
-	fmt.Println("Go Blue Bird CLI Tool")
+	fmt.Println("⚡ Go Blue Bird CLI Tool")
 	fmt.Println("Usage:")
-	fmt.Println("  go run cli/main.go rename <new-module-name>   # Rename project module path")
-	fmt.Println("  go run cli/main.go db tables                  # List database tables")
-	fmt.Println("  go run cli/main.go db columns <table>        # List columns for a table")
-	fmt.Println("  go run cli/main.go db query <table> [limit]   # Select rows from a table")
+	fmt.Println("  go run cli/main.go rename <new-module-name>          # Rename project module path")
+	fmt.Println("  go run cli/main.go db tables                         # List database tables")
+	fmt.Println("  go run cli/main.go db columns <table>               # List columns for a table")
+	fmt.Println("  go run cli/main.go db query <table> [limit]          # Select rows from a table")
+	fmt.Println("  go run cli/main.go build [os] [arch] [--dir=<path>]  # Compile binary into builds/ and generate VPS deploy configs")
+	fmt.Println("  go run cli/main.go service [--install]               # Generate or install systemd service on Linux VPS")
 }
 
 func renameModule(oldMod, newMod string) {
@@ -56,7 +64,7 @@ func renameModule(oldMod, newMod string) {
 		if err != nil {
 			return err
 		}
-		if d.IsDir() && (path == ".git" || path == "tmp" || path == "vendor" || path == "bin") {
+		if d.IsDir() && (path == ".git" || path == "tmp" || path == "vendor" || path == "bin" || path == "builds") {
 			return filepath.SkipDir
 		}
 
@@ -84,6 +92,228 @@ func renameModule(oldMod, newMod string) {
 	}
 
 	fmt.Printf("Successfully updated %d files to module '%s'.\n", count, newMod)
+}
+
+func handleBuildCommand(args []string) {
+	cfg := config.Load()
+	appName := strings.ToLower(cfg.AppName)
+	if appName == "" {
+		appName = "goapp"
+	}
+	port := cfg.Port
+	if port == "" {
+		port = "8080"
+	}
+
+	targetOS := runtime.GOOS
+	targetArch := runtime.GOARCH
+	vpsDir := "/var/www/" + appName
+
+	for _, arg := range args {
+		if strings.HasPrefix(arg, "--dir=") {
+			vpsDir = strings.TrimPrefix(arg, "--dir=")
+		} else if !strings.HasPrefix(arg, "-") {
+			if arg == "linux" || arg == "windows" || arg == "darwin" {
+				targetOS = arg
+			} else if arg == "amd64" || arg == "arm64" || arg == "386" {
+				targetArch = arg
+			}
+		}
+	}
+
+	buildDir := "builds"
+	if err := os.MkdirAll(buildDir, 0755); err != nil {
+		log.Fatalf("Failed to create %s directory: %v", buildDir, err)
+	}
+
+	binName := appName
+	if targetOS == "windows" {
+		binName += ".exe"
+	}
+	binPath := filepath.Join(buildDir, binName)
+
+	fmt.Printf("📦 Compiling Go Blue Bird for %s/%s...\n", targetOS, targetArch)
+	fmt.Printf(" - Binary target: %s\n", binPath)
+
+	cmd := exec.Command("go", "build", "-ldflags=-s -w", "-o", binPath, ".")
+	cmd.Env = append(os.Environ(), "GOOS="+targetOS, "GOARCH="+targetArch)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		fmt.Printf("❌ Compilation error:\n%s\n", string(output))
+		fmt.Println("\n💡 Tip: When cross-compiling SQLite with CGO, compiling natively on target OS or using a cross-compiler is recommended.")
+		return
+	}
+
+	fi, err := os.Stat(binPath)
+	if err == nil {
+		fmt.Printf("✅ Binary compiled successfully! Size: %.2f MB\n", float64(fi.Size())/(1024*1024))
+	}
+
+	// 1. Generate systemd service configuration file
+	serviceFile := filepath.Join(buildDir, "systemd_service.txt")
+	serviceContent := fmt.Sprintf(`# Systemd Service for %s
+# Target path on VPS: /etc/systemd/system/%s.service
+#
+# Deployment commands on Ubuntu/Debian VPS:
+#   sudo cp systemd_service.txt /etc/systemd/system/%s.service
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now %s
+#   sudo systemctl status %s
+#   sudo journalctl -u %s -f
+
+[Unit]
+Description=%s Go Web Service
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=%s
+ExecStart=%s/%s
+Restart=always
+RestartSec=5s
+EnvironmentFile=%s/.env
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target
+`, cfg.AppName, appName, appName, appName, appName, appName, cfg.AppName, vpsDir, vpsDir, binName, vpsDir)
+
+	_ = os.WriteFile(serviceFile, []byte(serviceContent), 0644)
+	fmt.Printf("📄 Generated Systemd config: %s\n", serviceFile)
+
+	// 2. Generate Nginx reverse proxy configuration file
+	nginxFile := filepath.Join(buildDir, "nginx_reverse_proxy.txt")
+	nginxContent := fmt.Sprintf(`# Nginx Reverse Proxy for %s
+# Target path on VPS: /etc/nginx/sites-available/%s
+#
+# Activation commands on VPS:
+#   sudo cp nginx_reverse_proxy.txt /etc/nginx/sites-available/%s
+#   sudo ln -sf /etc/nginx/sites-available/%s /etc/nginx/sites-enabled/
+#   sudo nginx -t && sudo systemctl reload nginx
+#   sudo certbot --nginx -d yourdomain.com -d www.yourdomain.com
+
+server {
+    listen 80;
+    server_name yourdomain.com www.yourdomain.com;
+
+    client_max_body_size 50M;
+
+    location / {
+        proxy_pass http://127.0.0.1:%s;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+        proxy_buffering off;
+        proxy_read_timeout 300s;
+    }
+}
+`, cfg.AppName, appName, appName, appName, port)
+
+	_ = os.WriteFile(nginxFile, []byte(nginxContent), 0644)
+	fmt.Printf("📄 Generated Nginx config:   %s\n", nginxFile)
+
+	// 3. Generate step-by-step deploy guide
+	guideFile := filepath.Join(buildDir, "deploy_guide.txt")
+	guideContent := fmt.Sprintf(`=======================================================
+🚀 GUIA RAPIDA DE DESPLIEGUE EN VPS - %s
+=======================================================
+
+1. Preparar directorio en tu VPS:
+   sudo mkdir -p %s
+   sudo chown -R www-data:www-data %s
+
+2. Subir binario y configuracion:
+   scp %s user@vps:%s/
+   scp .env user@vps:%s/
+   ssh user@vps "chmod +x %s/%s"
+
+3. Configurar servicio Systemd:
+   scp %s user@vps:/tmp/%s.service
+   ssh user@vps "sudo mv /tmp/%s.service /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl enable --now %s"
+
+4. Configurar Nginx (Reverse Proxy):
+   scp %s user@vps:/tmp/%s
+   ssh user@vps "sudo mv /tmp/%s /etc/nginx/sites-available/ && sudo ln -sf /etc/nginx/sites-available/%s /etc/nginx/sites-enabled/ && sudo nginx -t && sudo systemctl reload nginx"
+
+5. Certificado SSL gratuito (Opcional):
+   ssh user@vps "sudo certbot --nginx -d yourdomain.com"
+
+=======================================================
+Listo! Tu aplicacion estara corriendo en produccion.
+=======================================================
+`, cfg.AppName, vpsDir, vpsDir, binPath, vpsDir, vpsDir, vpsDir, binName, serviceFile, appName, appName, appName, nginxFile, appName, appName, appName)
+
+	_ = os.WriteFile(guideFile, []byte(guideContent), 0644)
+	fmt.Printf("📄 Generated Deploy guide:   %s\n", guideFile)
+	fmt.Println("\n✨ Build completed! Everything you need for deployment is inside builds/ folder.")
+}
+
+func handleServiceCommand(args []string) {
+	cfg := config.Load()
+	appName := strings.ToLower(cfg.AppName)
+	if appName == "" {
+		appName = "goapp"
+	}
+
+	install := false
+	for _, a := range args {
+		if a == "--install" {
+			install = true
+		}
+	}
+
+	if install {
+		if runtime.GOOS != "linux" {
+			log.Fatalf("Error: --install only runs natively on a Linux VPS.")
+		}
+		if os.Geteuid() != 0 {
+			log.Fatalf("Error: Please run with sudo: sudo go run cli/main.go service --install")
+		}
+
+		vpsDir := "/var/www/" + appName
+		servicePath := fmt.Sprintf("/etc/systemd/system/%s.service", appName)
+		serviceContent := fmt.Sprintf(`[Unit]
+Description=%s Go Web Service
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=%s
+ExecStart=%s/%s
+Restart=always
+RestartSec=5s
+EnvironmentFile=%s/.env
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target
+`, cfg.AppName, vpsDir, vpsDir, appName, vpsDir)
+
+		if err := os.WriteFile(servicePath, []byte(serviceContent), 0644); err != nil {
+			log.Fatalf("Failed to write %s: %v", servicePath, err)
+		}
+
+		_ = exec.Command("systemctl", "daemon-reload").Run()
+		_ = exec.Command("systemctl", "enable", "--now", appName).Run()
+
+		fmt.Printf("✅ Service %s installed and started successfully!\n", appName)
+		fmt.Printf("Check status with: systemctl status %s\n", appName)
+		return
+	}
+
+	fmt.Println("To compile and generate deployment files, run:")
+	fmt.Println("  go run cli/main.go build")
+	fmt.Println("To install systemd service automatically on a Linux VPS:")
+	fmt.Println("  sudo go run cli/main.go service --install")
 }
 
 func handleDBCommand(args []string) {

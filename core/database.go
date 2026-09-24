@@ -73,7 +73,11 @@ func buildDSN(cfg config.DatabaseConfig) string {
 	driver := strings.ToLower(cfg.Driver)
 	switch driver {
 	case "sqlite", "sqlite3":
-		return cfg.Name
+		dsn := cfg.Name
+		if !strings.Contains(dsn, "?") {
+			dsn += "?_journal_mode=WAL&_busy_timeout=5000&_synchronous=NORMAL"
+		}
+		return dsn
 	case "mysql":
 		charset := cfg.Charset
 		if charset == "" {

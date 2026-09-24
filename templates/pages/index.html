@@ -1,37 +1,49 @@
 {{define "content"}}
-<div class="hero-section">
-    <div class="hero-card">
-        <div class="pill-tag">🔥 Production Ready Template</div>
-        <h1 class="hero-title">Go + Gin + Air + Embed</h1>
-        <p class="hero-subtitle">A powerful, scalable base architecture for building modern Web & API applications in Go.</p>
-        
-        <div class="feature-grid">
-            <div class="feature-card">
-                <div class="feature-icon">🚀</div>
-                <h3>Live Reloading</h3>
-                <p>Configured with Air for instant development builds on file changes.</p>
-            </div>
-            <div class="feature-card">
-                <div class="feature-icon">📦</div>
-                <h3>Embedded Assets</h3>
-                <p>HTML templates and static files embedded directly into a single binary.</p>
-            </div>
-            <div class="feature-card">
-                <div class="feature-icon">🗄️</div>
-                <h3>Resilient DB Core</h3>
-                <p>Automatic retry connection wrapper for MySQL, Postgres, and SQLite.</p>
-            </div>
-            <div class="feature-card">
-                <div class="feature-icon">🛠️</div>
-                <h3>Smart CLI Tool</h3>
-                <p>Rename modules and query databases directly from the command line.</p>
-            </div>
-        </div>
+<div class="container gap-4">
 
-        <div class="action-buttons">
-            <a href="/api/v1/info" class="btn btn-primary">Test API Info</a>
-            <a href="/about" class="btn btn-secondary">Learn More</a>
-        </div>
+
+    <h1 class="text-gradient-sunset">⚡ Kit de Desarrollo en Go para Producción</h1>
+
+    <p>Arquitectura modular de alto rendimiento para APIs y aplicaciones web monolíticas en Go
+        con assets y plantillas embebidas.</p>
+
+    <div class="grid gap-4">
+        <article>
+            <h2>Rendimiento Nativo 🚀</h2>
+            <p>Enrutamiento ultrarrápido con Gin, modo Release y concurrencia por Goroutines.</p>
+        </article>
+        <article>
+
+            <h2>Binario Embebido 📦</h2>
+            <p>HTML, CSS y JS compilados directamente dentro de un único ejecutable sin dependencias.</p>
+        </article>
+        <article>
+
+            <h2>Base de Datos Resiliente 🗄️</h2>
+            <p>Soporte multi-driver para SQLite (WAL mode), MySQL y PostgreSQL con reintentos automáticos.</p>
+        </article>
+        <article>
+
+            <h2>In-Memory RAM Cache ⚡</h2>
+            <p>Caché en memoria sub-milisegundo con TTL y sincronización segura mediante RWMutex.</p>
+        </article>
+        <article>
+
+            <h2>Validación y Seguridad 🛡️</h2>
+            <p>Middlewares de CORS, recuperación de pánico, hash Bcrypt y validación de esquemas JSON.</p>
+        </article>
+        <article>
+
+            <h2>Herramienta CLI 🛠️</h2>
+            <p>Herramienta CLI para renombrar módulos, inspeccionar base de datos y generar builds con
+                systemd/nginx.</p>
+        </article>
     </div>
+
+    <footer>
+        <a href="/api/info" target="_blank" class="btn btn-primary">Información de API</a>
+        <a href="/about" class="btn btn-secondary">Conocer Más</a>
+    </footer>
+
 </div>
 {{end}}

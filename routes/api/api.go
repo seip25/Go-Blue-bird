@@ -17,7 +17,9 @@ type CreateUserRequest struct {
 
 func RegisterRoutes(rg *gin.RouterGroup) {
 	rg.GET("/health", HealthHandler)
+	rg.HEAD("/health", HealthHandler)
 	rg.GET("/info", InfoHandler)
+	rg.HEAD("/info", InfoHandler)
 	rg.POST("/users", CreateUserSampleHandler)
 }
 
@@ -37,9 +39,9 @@ func HealthHandler(c *gin.Context) {
 func InfoHandler(c *gin.Context) {
 	cfg := config.GetGlobal()
 	core.RespondSuccess(c, "Application information", gin.H{
-		"app_name": cfg.AppName,
-		"app_env":  cfg.AppEnv,
-		"port":     cfg.Port,
+		"app_name":  cfg.AppName,
+		"app_env":   cfg.AppEnv,
+		"port":      cfg.Port,
 		"db_driver": cfg.DB.Driver,
 	})
 }
